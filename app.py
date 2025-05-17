@@ -6,6 +6,7 @@
 # (5) Fix startup systemd service
 # (6) Restructure the layout to accomodate neofetch like data and terminal output with os.subprocess.stdout
 # Importing libraries
+import sys
 import gi
 import os
 import subprocess

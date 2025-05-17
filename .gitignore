@@ -1,6 +1,8 @@
 .env
-.venv
+.venv_master
+.venv_dev
 test.py
+requirements.txt
 bkup/*
 images/*
 voicevox/*
