@@ -1,0 +1,13 @@
+window {
+	background-color: rgba(0,0,5,0.25);
+}
+
+window label{
+	font-weight: bold;
+	font-size: 50px;
+	margin-bottom: 250px;
+}
+
+window entry{
+	font-size: 50px;
+}
