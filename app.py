@@ -1,11 +1,9 @@
 # TO DO LIST
-# (1) Set up the threads for pausing the script without rendering the application unresponsive
-# (2) Connect Label to Serifu
-# (3) Add audio with simpleaudio
-# (4) Add bash subprocesses
 # (5) Fix startup systemd service
 # (6) Restructure the layout to accomodate neofetch like data and terminal output with os.subprocess.stdout
+
 # Importing libraries
+import enum
 import sys
 import gi
 import os
@@ -13,7 +11,10 @@ import subprocess
 import simpleaudio
 import time
 import json
+
+# Importing the threading module and preventing segfault
 import threading
+threading.Thread(target=lambda: None).start()
 
 # Importing GTK 4
 gi.require_version("Gtk", "4.0")
@@ -49,6 +50,9 @@ class Mado(Gtk.ApplicationWindow):
 
         # ~~~　美少女のセリフ　~~~
         # --- Loading Serifu Configuration ---
+        # serifu.jon is the file containing
+        # all of the bishoujo's lines, both as strings and as audio file paths
+        # english is weird, so intead of "line" we use the term "serifu"
         self.serifu_data = {}
         serifu_config_path = os.path.join(SCRIPT_DIR, "serifu.json")
         try:
@@ -59,11 +63,56 @@ class Mado(Gtk.ApplicationWindow):
         except json.JSONDecodeError:
             print("[Mado] ERROR: Could not parse serifu.json")
 
+        # --- Commands ---
+        # this is the list of possible commands the user can input
+        # and the associated actions
+        # label_audio are used for getting a serifu text and audio file
+        # subprocess are used to get a list of bash commands
+        self.command_actions = {
+            "アニメ":[
+                {"type": "label_audio", "key": "vpn"},
+                {"type": "subprocess", "command": ["nordvpn", "connect", DIRECT_IP]},
+                {"type": "label_audio", "key": "danimestore"},
+                {"type": "subprocess", "command": ["google-chrome", "https://animestore.docomo.ne.jp"]},
+                {"type": "label_audio", "key": "protocol_anime"}
+                ],
+            "ダラダラ":[
+                {"type": "label_audio", "key": "discord"},
+                {"type": "subprocess", "command": "discord"},
+                {"type": "label_audio", "key": "spotify"},
+                {"type": "subprocess", "command": "spotify"},
+                {"type": "label_audio", "key": "youtube"},
+                {"type": "subprocess", "command": ["google-chrome", "https://youtube.com"]},
+                {"type": "label_audio", "key": "protocol_dara"}
+                ],
+            "プログラミング":[
+                {"type": "label_audio", "key": "nvim"},
+                {"type": "subprocess", "command": ["nvim", "~/Projects"]},
+                {"type": "label_audio", "key": "gemini"},
+                {"type": "subprocess", "command": ["google-chrome", "https://gemini.google.com/app"]},
+                {"type": "label_audio", "key": "protocol_vim"}
+                ]
+            }
+
+        # --- State Variables ---
+        # Since the threading module approach is incompatible with GLib
+        # we are now trying to work with a "State Machine" approach.
+        # All actions are going to be described as a sequence of events
+        # and these are the relevant variables to handle the state
+        self._current_action_sequence = None
+        self._current_action_index = 0
+        self._current_play_obj = None
+
+
         # ~~~　窓の見た目　~~~
         # ----------------------
         # --- Overall Layout ---
         # ----------------------
-        self.canvas = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12) # the canvas is the "drawable" area in the application
+
+        # Defining the canvas, which represents the drawable area in the appliaction
+        # for now the canvas is the only direct chield of the window
+        # however, we plan to set a box with horizon orientation to suport two canvas in the Layout Overhaul
+        self.canvas = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.set_child(self.canvas)
 
         # ~~~　美少女の立ち絵　~~~
@@ -89,96 +138,169 @@ class Mado(Gtk.ApplicationWindow):
 
         # ~~~　美少女の答え　~~~
         # --- Bishoujo Reply Label Section ---
-        self.reply = Gtk.Label(label="面あわせられしこと、幸いに存じます。ご用命を。")
+
+        # Defining the Gtk.Label that will hold the textual representation of the bishoujo's serifu
+        # might be changed to a Gtk.TextView in the Layout Overhaul
+        initial_reply_key = "welcome"
+        initial_reply_text = self.serifu_data.get(initial_reply_key, {}).get("text", "ようこそ")
+        self.reply = Gtk.Label(label=initial_reply_text)
         self.reply.set_justify(Gtk.Justification.CENTER)
         self.canvas.append(self.reply)
 
         # ~~~　美少女に気持ちを伝える手段　~~~
         # --- Entry Box to interact with Bishoujo ---
+
+        # Defining the text input
         self.entry = Gtk.Entry()
         self.entry.set_placeholder_text("コマンド")
         self.entry.set_halign(Gtk.Align.CENTER)
         self.entry.set_width_chars(50)
         self.canvas.append(self.entry)
         # Connecting the enter key press on the Entry Box to the method
-        self.entry.connect('activate', self.send_command)
+        self.entry.connect('activate', self.on_command_entered)
+        # Play welcome audio
+        self._play_audio_from_key_async(initial_reply_key)
 
         print("[Mado] Window initialized with image, label, and entry.")
 
     # ~~~　気持ちの伝え方　~~~
-    # -----------------------------
-    # --- Handler for Entry Box ---
-    # -----------------------------
-    def send_command(self, entry_widget: Gtk.Entry):
+    # ------------------------------
+    # --- Handlers for Entry Box ---
+    # ------------------------------
+    def _update_reply_label_text(self, new_label: str):
         """
-        Processes the user input
+        Updates the bishoujo reply label.
 
-        :param self: the Gtk.ApplicationWindow object
-        :param entry_widget: the Gtk.Entry containing the user input string
-        :return: None
+        Args:
+            self: the Gtk.ApplicationWindow object
+            new_label: the string to be set on the label
+        
+        Returns:
+            GLib.SOURCE_REMOVE: boolean, with value False, that removes the source from the main loop
+            
         """
-        command = entry_widget.get_text()
-        print(f"Command entered: '{command}'")
+        self.reply.set_text(new_label)
+        return GLib.SOURCE_REMOVE
 
-        # Updating the reply label
-        self.reply.set_text("コマンドを確認中")
+    def _play_audio_from_key_sync(self, serifu_key: str):
+        """
+        Plays audio specified by the serifu_key.
+        It blocks execution, so it should idealy not be called in the main thread.
 
-        # Matching command
-        match command.lower():
-                case "アニメ":
-                    self.reply.set_text("VPN発動")
-                    # play audio
-                    subprocess.run(["nordvpn", "connect", DIRECT_IP], check=True) # run in the background
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("ｄアニメストアに接続中")
-                    # play audio
-                    subprocess.run(["google-chrome", "https://animestore.docomo.ne.jp"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("接続完了")
-                    # play audio
-                case "ダラダラ":
-                    self.reply.set_text("Discord開始")
-                    # play audio
-                    subprocess.run(["discord"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("Spotify開始")
-                    # play audio
-                    subprocess.run(["spotify"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("YouTubeに接続")
-                    # play audio
-                    subprocess.run(["google-chrome", "https://youtube.com"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("処理完了")
-                    #play audio
-                case "プログラミング":
-                    self.reply.set_text("NeoVim開始")
-                    # play audio
-                    subprocess.run(["nvim", "~/Projects"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("Geminiに接続")
-                    # play audio
-                    subprocess.run(["google-chrome", "https://gemini.google.com/app"], check=True)
-                    # function to tell the app to wait X seconds, while the audio is played
-                    self.reply.set_text("処理完了")
-                    #play audio
-                case _:
-                    self.reply.set_text("そのコマンドは登録してありません")
-                    #play audio
+        Args:
+            self: the Gtk.ApplicationWindow object
+            serifu_key: string that corresponds to the dictionary key with the list containing the audio to be played
 
-        # Clearing entry
-        entry_widget.set_text("")
+        Returns:
+            None: the method only executes an action
+        """
+        serifu_entry = self.serifu_data.get(serifu_key)
+        if serifu_entry and "file" in serifu_entry:
+            audio_file_relative = serifu_entry["file"]
+            audio_path_abs = os.path.join(SCRIPT_DIR, audio_file_relative)
+            if os.path.exists(audio_path_abs):
+                try:
+                    print(f"[Thread/play_sync] Playing audio: {audio_path_abs} for key {serifu_key}")
+                    wave_obj = simpleaudio.WaveObject.from_wave_file(audio_path_abs)
+                    play_obj = wave_obj.play()
+                    play_obj.wait_done()
+                    print(f"[Thread/play_sync] Finished playing: {audio_path_abs}")
+                except Exception as e:
+                    print(f"[Thread/play_sync] Error playing audio: {audio_path_abs}: {e}")
+            else:
+                print(f"[Thread/play_sync] Audio file not found: {audio_path_abs}")
+        else:
+            print(f"[Thread/play_sync] No audio file found for key: {serifu_key}")
+
+    def _play_audio_from_key_async(self, serifu_key: str):
+        """
+        Plays audio in a new thread without blocking UI for one-off plays
+
+        Args:
+            self: the Gtk.ApplicationWindow object
+            serifu_key: string that corresponds to the dictionary key with the list containing the audio to be played
+
+        Returns:
+            None: the method only executes an action
+        """
+        thread = threading.Thread(target=self._play_audio_from_key_sync, args=(serifu_key,))
+        thread.daemon = True
+        thread.start()
+
+    def _process_command_sequence_thread(self, command_key: str):
+        """
+        Reads the user input and executes the appropriated action.
+        Should not be called in the main thread, since it contains code that blocks execution.
+
+        Args:
+            self: the Gtk.ApplicationWindow object
+            command_key: string that corresponds to the input
+        """
+        actions = self.command_actions.get(command_key)
+
+        checking_key = "checking"
+        checking_text = self.serifu_data.get(checking_key, {}).get("text", "確認中")
+        GLib.idle_add(self._update_reply_label_text, checking_text)
+        self._play_audio_from_key_sync(checking_key)
+
+        if not actions:
+            unknown_key = "unkown_command"
+            unkown_text = self.serifu_data.get(unknown_key, {}).get("text", "理解不能")
+            GLib.iddle_add(self._update_reply_label_text, unkown_text)
+            self._play_audio_from_key_sync(unknown_key)
+            return
+
+        for action_index, action_config in enumerate(actions):
+            action_type = action_config["type"]
+
+            if action_type == "label_audio" and "key" in action_config:
+                serifu_key = action_config["key"]
+                action_text = self.serifu_data.get(serifu_key, {}).get("text", "")
+                GLib.iddle_add(self._update_reply_label_text, action_text)
+                self._play_audio_from_key_async(serifu_key)
+
+            elif action_type == "subprocess":
+                cmd_list = action_config["command"]
+                print(f"Subprocess received: {cmd_list}")
+                print("Subprocessing not yet implemented")
+
+    def on_command_entered(self, entry_widget: Gtk.Entry):
+        """
+        Handles user input, initiating the thread that will process it.
+
+        Args:
+            self: the Gtk.ApplicationWindow object
+            entry_widget: the Gtk.Entry in which the user command was entered
+
+        Returns:
+            None
+        """
+        command_text = entry_widget.get_text()
+        print(f"Command entered by the user: '{command_text}'")
+        entry_widget.set_text("") # in order to clear the Gtk.Entry
+
+        if not command_text:
+            return
+        
+        thread = threading.Thread(target=self._process_command_sequence_thread, args=(command_text,))
+        thread.daemon = True
+        thread.start()
 
 #　~~~　窓の作成　~~~
-# -----------------------------------
-# --- Function to create a window ---
-# -----------------------------------
+# -----------------------------------------
+# --- Function that initializes the app ---
+# -----------------------------------------
 def on_activate(app):
     """
-    Function that runs when the application starts
+    Runs when the application starts.
+    Initializes the bishoujo, loads CSS and creates a window
 
-    :param app: the Gtk.Application object
-    :returns: None
+
+    Args:
+        app: the Gtk.Application that will run on the window
+
+    Returns:
+        None
     """
     usagi = Bishoujo("usagi")
 
@@ -191,7 +313,7 @@ def on_activate(app):
 
     mado = Mado(usagi, application=app)
 
-    # Styling the window
+    # Loading the CSS file to style the window
     css_provider = Gtk.CssProvider()
     style_relative_path = "style.css"
     style_full_path = os.path.join(SCRIPT_DIR, style_relative_path)
@@ -205,15 +327,19 @@ def on_activate(app):
         css_provider,
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
+
+    # Removing the window top bar and presenting it
     mado.set_decorated(False)
     mado.present()
 
-# ------------------------------------------
 # ******************************************
+# ------------------------------------------
 # --- Main Execution -----------------------
 # ------------------------------------------
+# ******************************************
+
 # Creating a new application
-app = Gtk.Application(application_id="com.example.App.Ouroboros")
+app = Gtk.Application(application_id="com.example.App.bishoujoDE")
 app.connect("activate", on_activate)
 
 # Running the application
