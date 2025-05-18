@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 DIRECT_IP = os.getenv("DIRECT_IP")
 
+# ~~~　美少女クラス　~~~
 # Creating bishoujo class, in order to support character change
 class Bishoujo:
     def __init__(self, name: str):
@@ -39,12 +40,14 @@ class Bishoujo:
     def getPortrait(self):
         return self.portrait
 
+# ~~~　美少女の窓　~~~
 # Creating Window Class, to replace a generic Gtk.ApplicationWindow
-class MyWindow(Gtk.ApplicationWindow):
+class Mado(Gtk.ApplicationWindow):
     def __init__(self, bishoujo: Bishoujo, **kargs):
-        super().__init__(**kargs, title="Project Ouroboros")
+        super().__init__(**kargs, title="bishoujoDE")
         self.maximize()
 
+        # ~~~　美少女のセリフ　~~~
         # --- Loading Serifu Configuration ---
         self.serifu_data = {}
         serifu_config_path = os.path.join(SCRIPT_DIR, "serifu.json")
@@ -52,59 +55,68 @@ class MyWindow(Gtk.ApplicationWindow):
             with open(serifu_config_path, 'r', encoding='utf-8') as f:
                 self.serifu_data = json.load(f)
         except FileNotFoundError:
-            print(f"[MyWindow] ERROR: Serifu configuration file not found at {serifu_config_path}")
+            print(f"[Mado] ERROR: Serifu configuration file not found at {serifu_config_path}")
         except json.JSONDecodeError:
-            print("[MyWindow] ERROR: Could not parse serifu.json")
+            print("[Mado] ERROR: Could not parse serifu.json")
 
-        # Overall Layout: A vertical box will hold all our elements
-        self.canvas = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        self.set_child(self.canvas) # Set this main box as the window's single child
+        # ~~~　窓の見た目　~~~
+        # ----------------------
+        # --- Overall Layout ---
+        # ----------------------
+        self.canvas = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12) # the canvas is the "drawable" area in the application
+        self.set_child(self.canvas)
 
-        # --- Bishoujo Portrait Image Section ---
-        # Create a CenterBox to help center the image
+        # ~~~　美少女の立ち絵　~~~
+        # Creating container for the bishoujo image file
         image_container = Gtk.CenterBox()
-        self.canvas.append(image_container) # Add the CenterBox to our main vertical canvas
+        self.canvas.append(image_container)
 
         portrait_path = bishoujo.getPortrait()
-        actual_display_widget = None # This will hold either the image or an error label
+        actual_display_widget = None # this is the widget variable that will contain either the image or an error label
 
         if os.path.exists(portrait_path):
-            print(f"[MyWindow] Gtk.Image: Attempting to load from {portrait_path}")
+            print(f"[Mado] Gtk.Image: Attempting to load from {portrait_path}")
             actual_display_widget = Gtk.Image.new_from_file(portrait_path)
             actual_display_widget.set_pixel_size(1200)
         else:
-            print(f"[MyWindow] ERROR: Image file not found at {portrait_path}.")
+            print(f"[Mado] ERROR: Image file not found at {portrait_path}.")
             error_label_text = f"Error: Image not found!\nPath was:\n{portrait_path}"
             actual_display_widget = Gtk.Label(label=error_label_text)
-        
+
         # Set the image (or error label) as the center widget of the CenterBox
         if actual_display_widget:
             image_container.set_center_widget(actual_display_widget)
-        # The lines related to `self.image = Gtk.Picture...` from your code were a bit redundant
-        # with the Gtk.Image loading, so I've consolidated it to use `actual_display_widget`.
 
+        # ~~~　美少女の答え　~~~
         # --- Bishoujo Reply Label Section ---
         self.reply = Gtk.Label(label="面あわせられしこと、幸いに存じます。ご用命を。")
-        # To make the label text itself centered if it wraps:
         self.reply.set_justify(Gtk.Justification.CENTER)
-        self.canvas.append(self.reply) # Add label to the main vertical canvas
+        self.canvas.append(self.reply)
 
+        # ~~~　美少女に気持ちを伝える手段　~~~
         # --- Entry Box to interact with Bishoujo ---
-        self.entry = Gtk.Entry()  # <<< THE FIX: Instantiate Gtk.Entry with ()
-        self.entry.set_placeholder_text("コマンド") # Helpful hint for user
-        # Center the entry widget within the space allocated by the canvas
+        self.entry = Gtk.Entry()
+        self.entry.set_placeholder_text("コマンド")
         self.entry.set_halign(Gtk.Align.CENTER)
-        # Give the entry a more "standard" width rather than stretching full window width
         self.entry.set_width_chars(50)
-        self.canvas.append(self.entry) # Add entry to the main vertical canvas
-
+        self.canvas.append(self.entry)
         # Connecting the enter key press on the Entry Box to the method
         self.entry.connect('activate', self.send_command)
 
-        print("[MyWindow] Window initialized with image, label, and entry.")
+        print("[Mado] Window initialized with image, label, and entry.")
 
-    # Handler for the Entry Box
+    # ~~~　気持ちの伝え方　~~~
+    # -----------------------------
+    # --- Handler for Entry Box ---
+    # -----------------------------
     def send_command(self, entry_widget: Gtk.Entry):
+        """
+        Processes the user input
+
+        :param self: the Gtk.ApplicationWindow object
+        :param entry_widget: the Gtk.Entry containing the user input string
+        :return: None
+        """
         command = entry_widget.get_text()
         print(f"Command entered: '{command}'")
 
@@ -157,8 +169,17 @@ class MyWindow(Gtk.ApplicationWindow):
         # Clearing entry
         entry_widget.set_text("")
 
-# Function to create a window
+#　~~~　窓の作成　~~~
+# -----------------------------------
+# --- Function to create a window ---
+# -----------------------------------
 def on_activate(app):
+    """
+    Function that runs when the application starts
+
+    :param app: the Gtk.Application object
+    :returns: None
+    """
     usagi = Bishoujo("usagi")
 
     # Constructing the absolute path to the image
@@ -168,7 +189,7 @@ def on_activate(app):
     usagi.setPortrait(image_full_path)
     print(f"[on_activate] Portrait path set to {usagi.getPortrait()}")
 
-    window = MyWindow(usagi, application=app)
+    mado = Mado(usagi, application=app)
 
     # Styling the window
     css_provider = Gtk.CssProvider()
@@ -184,10 +205,13 @@ def on_activate(app):
         css_provider,
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
-    window.set_decorated(False)
-    window.present()
+    mado.set_decorated(False)
+    mado.present()
 
-
+# ------------------------------------------
+# ******************************************
+# --- Main Execution -----------------------
+# ------------------------------------------
 # Creating a new application
 app = Gtk.Application(application_id="com.example.App.Ouroboros")
 app.connect("activate", on_activate)

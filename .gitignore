@@ -2,6 +2,7 @@
 .venv_master
 .venv_dev
 test.py
+gemini.py
 requirements.txt
 bkup/*
 images/*
