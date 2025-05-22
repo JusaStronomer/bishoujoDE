@@ -1,4 +1,3 @@
-
 # Importing PyGObject and Gtk4 related modules
 import gi
 
