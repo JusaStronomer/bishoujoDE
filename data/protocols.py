@@ -1,3 +1,35 @@
+"""Handles the definition and retrieval of sequential command protocols.
+
+This module definse the 'ProtocolData' class, which encapsulates pre-defined sequences of commands, referred to as 'protocols'.
+The protocols are structured as lists of dictionaries, with each dict representing a single step in the sequence,
+associating it's type and the key.
+
+The possible types are:
+        'update_label', which is associated to a string to be set as text in a Gtk.Label;
+        'play_audio', which is associated to a audio_file name in a voicevox subdirectory;
+        'subprocess', which is associated to a bash command and it's arguments.
+
+Example Usage:
+    # Assuming this file is named 'protocol_manager.py'
+    from protocol_manager import ProtocolData
+
+    data_manager = ProtocolData()
+    anime_protocol = data_manager.get_protocol("アニメ")
+    if anime_protocol:
+        for command_step in anime_protocol:
+            print(f"Executing: {command_step['type']} with data {command_step}")
+
+Notes:
+
+To use 'play_audio', it's necessary to prefix the string with './voicevox/character_name/'
+and to sufix it with a '.wav' or any other valid audio file extension.
+
+The keys in 'subprocess' are hardcoded as commands relevants to my reality (using nordvpn and having a DIRECT_IP address),
+so it should be heavily modified to suit the needs of the any given reimplementation of the present project.
+
+It's encouraged to store sensitive data in the '.env' file and use the 'dotenv' module to load it.
+
+"""
 # Importing env file
 import os
 from dotenv import load_dotenv
@@ -60,9 +92,3 @@ class ProtocolData:
 		"""
 
 		return self.protocols.get(key)
-
-	def get_protocol_dictionary(self) -> (dict):
-		"""
-		Returns itself, a dictionary of lists of commands
-		"""
-		return self.protocols

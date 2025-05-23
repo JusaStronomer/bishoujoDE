@@ -1,26 +1,35 @@
 # Importing PyGObject and Gtk4 related modules
 import gi
 
-from data.commands import DIRECT_IP
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gdk, Gio, GLib
 
+# Importing other external modules
 import playsound
 import threading
 import os
 #import subprocess
-from data.serifu import dai_hon
+
+# Importing data structures
+from data.serifu import SerifuData 
+from data.protocols import ProtocolData
 
 # Getting file path to construct absolute paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ~~~　美少女クラス　~~~
-# Creating bishoujo class
-# this is the character whose portrait, lines and voice is used
+# Creating bishoujo class.
+# This is the character whose portrait, lines and voice is used.
+# The "name" argument is extremely important, since it's expected to be used in the project's filesystem:
+# for the 立ち絵, the "images" directory should have an image file with the character's name (with the ".png" extension);
+# for the 音声, the "voicevox" directory should have a subdirectory with the character's name, as the parent of all of the audio files.
+# The 台本 represents the reference with all the character lines (セリフ).
+# With these explanations, the terminology should be dismistified.
 class Bishoujo:
-    def __init__(self, name: str):
+    def __init__(self, name: str, dai_hon: SerifuData):
         self.name = name
         self.tachie = os.path.join(SCRIPT_DIR, "images", self.name + ".png")
+        self.dai_hon = dai_hon
 
     def get_tachie(self):
         return self.tachie
@@ -31,44 +40,18 @@ class Bishoujo:
         return self.onsei
     
     def get_serifu(self, key: str):
-        return dai_hon(self.name, key)
+        return self.dai_hon.get_serifu(self.name, key)
 
 # ~~~　美少女の窓　~~~
 # Creating Window Class, to replace a generic Gtk.ApplicationWindow
-# window is not a cool word, so we are using "mado"
-class MyWindow(Gtk.ApplicationWindow):
-    def __init__(self, bishoujo: Bishoujo, **kargs):
+# Window is not a cool word, so we are using "mado".
+class Mado(Gtk.ApplicationWindow):
+    def __init__(self, **kargs):
         super().__init__(**kargs, title="Project Ouroboros")
         self.maximize()
-        self.bishoujo = bishoujo
-        self.commands = {
-            "アニメ":[
-                {"type": "update_label", "serifu_key": "vpn"},
-                {"type": "play_audio", "serifu_key": "vpn"},
-                {"type": "subprocess", "command": ["nordvpn", "connect", DIRECT_IP]},
-                {"type": "update_label", "serifu_key": "danimestore"},
-                {"type": "play_audio", "serifu_key": "danimestore"},
-                {"type": "subprocess", "command": ["google-chrome", "https://animestore.docomo.ne.jp"]},
-                {"type": "update_label", "serifu_key": "protocol_anime"},
-                {"type": "play_audio", "serifu_key": "protocol_anime"}
-            ],
-            "ダラダラ":[
-                {"type": "label_audio", "serifu_key": "discord"},
-                {"type": "subprocess", "command": "discord"},
-                {"type": "label_audio", "serifu_key": "spotify"},
-                {"type": "subprocess", "command": "spotify"},
-                {"type": "label_audio", "serifu_key": "youtube"},
-                {"type": "subprocess", "command": ["google-chrome", "https://youtube.com"]},
-                {"type": "label_audio", "serifu_key": "protocol_dara"}
-            ],
-            "プログラミング":[
-                {"type": "label_audio", "serifu_key": "nvim"},
-                {"type": "subprocess", "command": ["nvim", "~/Projects"]},
-                {"type": "label_audio", "serifu_key": "gemini"},
-                {"type": "subprocess", "command": ["google-chrome", "https://gemini.google.com/app"]},
-                {"type": "label_audio", "serifu_key": "protocol_vim"}
-            ]
-        }
+        self.serifu_manager = SerifuData()
+        self.bishoujo = Bishoujo("Usagi", self.serifu_manager)
+        self.protocol_manager = ProtocolData()
 
         # ~~~　窓の見た目　~~~
         # ----------------------
@@ -90,11 +73,11 @@ class MyWindow(Gtk.ApplicationWindow):
         actual_display_widget = None # this is the widget variable that will contain either the image or an error label
 
         if os.path.exists(portrait_path):
-            print(f"[MyWindow] Gtk.Image: Attempting to load from {portrait_path}")
+            print(f"[Mado] Gtk.Image: Attempting to load from {portrait_path}")
             actual_display_widget = Gtk.Image.new_from_file(portrait_path)
             actual_display_widget.set_pixel_size(1200)
         else:
-            print(f"[MyWindow] ERROR: Image file not found at {portrait_path}.")
+            print(f"[Mado] ERROR: Image file not found at {portrait_path}.")
             error_label_text = f"Error: Image not found!\nPath was:\n{portrait_path}"
             actual_display_widget = Gtk.Label(label=error_label_text)
         
@@ -127,7 +110,7 @@ class MyWindow(Gtk.ApplicationWindow):
         # Connecting the enter key press on the Entry Box to the method
         self.entry.connect('activate', self.on_entry_activate)
 
-        print("[MyWindow] Window initialized with image, label, and entry.")
+        print("[Mado] Window initialized with image, label, and entry.")
 
     # --- Helper method to update GUI from any thread (schedules on main thread) ---
     def _update_reply_label_on_main_thread(self, serifu_key_or_direct_text: str, is_key: bool = True):
@@ -171,7 +154,7 @@ class MyWindow(Gtk.ApplicationWindow):
         GLib.idle_add(self._update_reply_label_on_main_thread, "checking", True)
         # self._play_audio_sync_in_worker("checking") # Optional: if you have a "checking" audio
 
-        sequence = self.commands.get(command.lower())
+        sequence = self.protocol_manager.get_protocol(command)
 
         if not sequence:
             GLib.idle_add(self._update_reply_label_on_main_thread, "unknown_command", True) # Use key from dai_hon
@@ -241,9 +224,8 @@ class MyWindow(Gtk.ApplicationWindow):
 # --- Function that initializes the app ---
 # -----------------------------------------
 def on_activate(app):
-    Usagi = Bishoujo("Usagi")
 
-    window = MyWindow(Usagi, application=app)
+    window = Mado(application=app)
 
     # Styling the window
     css_provider = Gtk.CssProvider()
