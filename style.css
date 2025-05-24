@@ -1,22 +1,29 @@
 window {
-	background-color: rgba(0,0,5,0.25);
-}
-
-window label{
-	font-weight: bold;
-	font-size: 50px;
-	margin-bottom: 250px;
+	background-color: rgba(0,0,25,0.25);
 }
 
 window entry{
 	font-size: 50px;
 }
 
-.neofetch{
-	font-weight: normal;
-	font-size: 36px;
+.reply_label{
+	font-weight: bold;
+	font-size: 50px;
+	margin-bottom: 250px;
 }
 
-.terminal{
-	background-color: rgba(0,0,25,0.75);
+.neofetch_key{
+	color: #cf2740;
+	font-weight: bold;
+	font-size: 32px;
+}
+
+.neofetch_value{
+	font-weight: normal;
+	font-size: 32px;
+
+}
+
+.terminal_textview{
+	font-size: 24px;
 }
