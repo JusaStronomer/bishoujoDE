@@ -11,3 +11,12 @@ window label{
 window entry{
 	font-size: 50px;
 }
+
+.neofetch{
+	font-weight: normal;
+	font-size: 36px;
+}
+
+.terminal{
+	background-color: rgba(0,0,25,0.75);
+}

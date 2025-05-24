@@ -58,16 +58,53 @@ class Mado(Gtk.ApplicationWindow):
         # --- Overall Layout ---
         # ----------------------
 
+        
+        # Styling the window
+        css_provider = Gtk.CssProvider()
+        style_relative_path = "style.css"
+        style_full_path = os.path.join(SCRIPT_DIR, style_relative_path)
+        try:
+            css_provider.load_from_path(style_full_path)
+        except GLib.Error as e:
+            print(f"Error loading CSS file: {e.message}")
+
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
         # Defining the canvas, which represents the drawable area in the appliaction
-        # for now the canvas is the only direct child of the window
-        # however, we plan to set a box with horizon orientation to suport two canvas in the Layout Overhaul
-        self.canvas = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        self.set_child(self.canvas) # Set this main box as the window's single child
+        # it should be the only direct child of the window
+        self.canvas = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.canvas.set_size_request(2000,1000)
+        self.canvas.set_halign(Gtk.Align.CENTER)
+        self.canvas.set_valign(Gtk.Align.CENTER)
+        #canvas_style_context = self.canvas.get_style_context()
+        #canvas_style_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        #canvas_style_context.add_class("canvas")
+        self.set_child(self.canvas)
+
+        self.left_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.left_column.set_size_request(1000,1000)
+        self.right_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.right_column.set_size_request(1000,1000)
+
+        self.left_column.set_hexpand(False)
+        self.right_column.set_hexpand(False)
+
+        self.canvas.append(self.left_column)
+        self.canvas.append(self.right_column)
+
+        # ----------------------
+        # --- RIGHT COLUMN -----
+        # ----------------------
 
         # ~~~　美少女の立ち絵　~~~
         # Creating container for the bishoujo image file
         image_container = Gtk.CenterBox()
-        self.canvas.append(image_container) # Add the CenterBox to our main vertical canvas
+        image_container.set_vexpand(False)
+        self.right_column.append(image_container) # Add the CenterBox to our main vertical canvas
 
         portrait_path = self.bishoujo.get_tachie()
         actual_display_widget = None # this is the widget variable that will contain either the image or an error label
@@ -75,7 +112,9 @@ class Mado(Gtk.ApplicationWindow):
         if os.path.exists(portrait_path):
             print(f"[Mado] Gtk.Image: Attempting to load from {portrait_path}")
             actual_display_widget = Gtk.Image.new_from_file(portrait_path)
-            actual_display_widget.set_pixel_size(1200)
+            #actual_display_widget.set_hexpand(True)
+            #actual_display_widget.set_vexpand(True)
+            actual_display_widget.set_pixel_size(1000)
         else:
             print(f"[Mado] ERROR: Image file not found at {portrait_path}.")
             error_label_text = f"Error: Image not found!\nPath was:\n{portrait_path}"
@@ -89,10 +128,9 @@ class Mado(Gtk.ApplicationWindow):
         # --- Bishoujo Reply Label Section ---
 
         # Defining the Gtk.Label that will hold the textual representation of the bishoujo's serifu
-        # might be changed to a Gtk.TextView in the Layout Overhaul
         self.reply = Gtk.Label(label=self.bishoujo.get_serifu("welcome"))
         self.reply.set_justify(Gtk.Justification.CENTER)
-        self.canvas.append(self.reply)
+        self.right_column.append(self.reply)
 
         # ~~~　美少女に気持ちを伝える手段　~~~
         # --- Entry Box to interact with Bishoujo ---
@@ -101,8 +139,64 @@ class Mado(Gtk.ApplicationWindow):
         self.entry = Gtk.Entry()
         self.entry.set_placeholder_text("コマンド")
         self.entry.set_halign(Gtk.Align.CENTER)
-        self.entry.set_width_chars(50)
-        self.canvas.append(self.entry)
+        self.entry.set_width_chars(30)
+        self.entry.set_opacity(0.9)
+        self.right_column.append(self.entry)
+
+        # ----------------------
+        # --- LEFT COLUMN -----
+        # ----------------------
+
+        # Section for Neofetch like data
+        neofetch_like_data = '''jusa@jusa-B450M-DS3H 
+            -------------------- 
+            OS: Ubuntu 24.04.2 LTS x86_64 
+            Host: B450M DS3H 
+            Kernel: 6.11.0-26-generic 
+            Uptime: 5 hours, 24 mins 
+            Packages: 2409 (dpkg), 34 (snap) 
+            Shell: bash 5.2.21 
+            Resolution: 3840x2160 
+            DE: GNOME 46.0 
+            WM: Mutter 
+            WM Theme: Adwaita 
+            Theme: Yaru-blue-dark [GTK2/3] 
+            Icons: Yaru-blue [GTK2/3] 
+            Terminal: gnome-terminal 
+            CPU: AMD Ryzen 5 3600 (12) @ 3.600GHz 
+            GPU: AMD ATI Radeon RX 550 640SP / RX 560/560X 
+            Memory: 3426MiB / 7884MiB 
+            '''
+        self.sys_data_label = Gtk.Label(label=neofetch_like_data)
+        self.sys_data_label.set_vexpand(False)
+        #self.sys_data_label.set_xalign(0)
+        self.sys_data_label.set_halign(Gtk.Align.START)
+
+        sys_lbl_context = self.sys_data_label.get_style_context()
+        sys_lbl_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        sys_lbl_context.add_class('neofetch')
+
+        self.left_column.append(self.sys_data_label)
+
+        # Section for terminal output
+        self.terminal_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.terminal_container.set_vexpand(True)
+        #self.terminal_container.set_size_request(1000, 775)
+        scrolledwindow = Gtk.ScrolledWindow()
+        scrolledwindow.set_has_frame(True)
+        scrolledwindow.set_min_content_height(775)
+        scrolledwindow.set_opacity(0.9)
+        self.terminal_container.append(scrolledwindow)
+        self.left_column.append(self.terminal_container)
+
+        self.terminal_view = Gtk.TextView()
+        self.textbuffer = self.terminal_view.get_buffer()
+        self.textbuffer.set_text(
+            '[From terminal_view] Attempting to confirm own existence.\n' +
+            '[From terminal_view] Unable to obtain confirmation.\n' +
+            '[From terminal_view] Defaulting to assume cogito ergo sum.'
+        )
+        scrolledwindow.set_child(self.terminal_view)
 
         #Initial greeting
         self._launch_initial_sound_thread("welcome")
@@ -227,20 +321,6 @@ def on_activate(app):
 
     window = Mado(application=app)
 
-    # Styling the window
-    css_provider = Gtk.CssProvider()
-    style_relative_path = "style.css"
-    style_full_path = os.path.join(SCRIPT_DIR, style_relative_path)
-    try:
-        css_provider.load_from_path(style_full_path)
-    except GLib.Error as e:
-        print(f"Error loading CSS file: {e.message}")
-
-    Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(),
-        css_provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    )
     window.set_decorated(False)
     window.present()
 
