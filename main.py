@@ -8,11 +8,12 @@ from gi.repository import Gtk, Gdk, Gio, GLib
 import playsound
 import threading
 import os
-# import subprocess
+import subprocess
 
 # Importing data structures
 from data.serifu import SerifuData
 from data.protocols import ProtocolData
+import data.sysinfo
 
 # Getting file path to construct absolute paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +44,21 @@ class Bishoujo:
     def get_serifu(self, key: str):
         return self.dai_hon.get_serifu(self.name, key)
 
+    # -- 報告関連の関数 --
+    def os_houkoku(self):
+        return data.sysinfo.get_os_info()
+
+    def host_houkoku(self):
+        return data.sysinfo.get_host_info()
+
+    def kernel_houkoku(self):
+        return data.sysinfo.get_kernel_info()
+
+    def uptime_houkoku(self):
+        return data.sysinfo.get_uptime_info()
+
+    def package_houkoku(self):
+        return data.sysinfo.get_package_count_dpkg()
 
 # ~~~　美少女の窓　~~~
 # Creating Window Class, to replace a generic Gtk.ApplicationWindow
@@ -151,84 +167,52 @@ class Mado(Gtk.ApplicationWindow):
         # --- LEFT COLUMN -----
         # ----------------------
 
-        # Section for Neofetch like data
-        # neofetch_like_data = '''jusa@jusa-B450M-DS3H
-        # --------------------
-        # OS: Ubuntu 24.04.2 LTS x86_64
-        # Host: B450M DS3H
-        # Kernel: 6.11.0-26-generic
-        # Uptime: 5 hours, 24 mins
-        # Packages: 2409 (dpkg), 34 (snap)
-        # Shell: bash 5.2.21
-        # Resolution: 3840x2160
-        # DE: GNOME 46.0
-        # WM: Mutter
-        # WM Theme: Adwaita
-        # Theme: Yaru-blue-dark [GTK2/3]
-        # Icons: Yaru-blue [GTK2/3]
-        # Terminal: gnome-terminal
-        # CPU: AMD Ryzen 5 3600 (12) @ 3.600GHz
-        # GPU: AMD ATI Radeon RX 550 640SP / RX 560/560X
-        # Memory: 3426MiB / 7884MiB
-        #'''
-        # self.sys_data_label = Gtk.Label(label=neofetch_like_data)
-        # self.sys_data_label.set_vexpand(False)
-        ##self.sys_data_label.set_xalign(0)
-        # self.sys_data_label.set_halign(Gtk.Align.START)
-
-        # sys_lbl_context = self.sys_data_label.get_style_context()
-        # sys_lbl_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        # sys_lbl_context.add_class('neofetch')
-        #
-        # self.left_column.append(self.sys_data_label)
-
         neofetch_grid = Gtk.Grid()
         neofetch_grid.set_column_spacing(6)  # Space between key and value
         neofetch_grid.set_row_spacing(3)  # Space between lines
         self.left_column.append(neofetch_grid)  # Add the grid to your left column
 
         # Neofetch data
-        # currently static, but will eventually be dynamic
-        key_os = Gtk.Label(label="OS:")
-        key_os.add_css_class('neofetch_key')
-        key_os.set_xalign(1.0)  # Right-align the key text within its cell
-        neofetch_grid.attach(key_os, 0, 0, 1, 1)  # Col 0, Row 0
+        key_kernel = Gtk.Label(label="Kernel:")
+        key_kernel.add_css_class('neofetch_key')
+        key_kernel.set_xalign(1.0)  # Right-align the key text within its cell
+        neofetch_grid.attach(key_kernel, 0, 0, 1, 1)  # Col 0, Row 0
 
-        value_os = Gtk.Label(label="Ubuntu 24.04.2 LTS x86_64")
-        value_os.add_css_class('neofetch_value')
-        value_os.set_xalign(0.0)  # Left-align the value text
-        value_os.set_selectable(True)  # Allow user to select text
-        neofetch_grid.attach(value_os, 1, 0, 1, 1)  # Col 1, Row 0
+        value_kernel = Gtk.Label(label=self.bishoujo.os_houkoku())
+        value_kernel.add_css_class('neofetch_value')
+        value_kernel.set_xalign(0.0)  # Left-align the value text
+        value_kernel.set_selectable(True)  # Allow user to select text
+        neofetch_grid.attach(value_kernel, 1, 0, 1, 1)  # Col 1, Row 0
 
         # Example for the second line:
-        key_host = Gtk.Label(label="Host:")
-        key_host.add_css_class('neofetch_key')
-        key_host.set_xalign(1.0)
-        neofetch_grid.attach(key_host, 0, 1, 1, 1)  # Col 0, Row 1
+        key_distro = Gtk.Label(label="Distro:")
+        key_distro.add_css_class('neofetch_key')
+        key_distro.set_xalign(1.0)
+        neofetch_grid.attach(key_distro, 0, 1, 1, 1)  # Col 0, Row 1
 
-        value_host = Gtk.Label(label="B450M DS3H")
-        value_host.add_css_class('neofetch_value')
+        value_distro = Gtk.Label(label="Ubuntu 24.04.2 LTS x86_6")
+        value_distro.add_css_class('neofetch_value')
+        value_distro.set_xalign(0.0)
+        value_distro.set_selectable(True)
+        neofetch_grid.attach(value_distro, 1, 1, 1, 1)  # Col 1, Row 1
+
+        key_host = Gtk.Label(label="Host:")
+        key_host.add_css_class('neofetch_key') 
+        key_host.set_xalign(1.0)
+        neofetch_grid.attach(key_host, 0, 2, 1, 1)
+
+        value_host = Gtk.Label(label=self.bishoujo.host_houkoku())
+        value_host.add_css_class('neofetch_value') 
         value_host.set_xalign(0.0)
         value_host.set_selectable(True)
-        neofetch_grid.attach(value_host, 1, 1, 1, 1)  # Col 1, Row 1
-
-        key_kernel = Gtk.Label(label="Kernel:")
-        key_kernel.add_css_class('neofetch_key') 
-        key_kernel.set_xalign(1.0)
-        neofetch_grid.attach(key_kernel, 0, 2, 1, 1)
-
-        value_kernel = Gtk.Label(label="6.11.0-26-generic")
-        value_kernel.add_css_class('neofetch_value') 
-        value_kernel.set_xalign(0.0)
-        value_kernel.set_selectable(True)
-        neofetch_grid.attach(value_kernel, 1, 2, 1, 1)
+        neofetch_grid.attach(value_host, 1, 2, 1, 1)
 
         key_uptime = Gtk.Label(label="Uptime:")
         key_uptime.add_css_class('neofetch_key') 
         key_uptime.set_xalign(1.0)
         neofetch_grid.attach(key_uptime, 0, 3, 1, 1)
 
-        value_uptime = Gtk.Label(label="... function not implemented")
+        value_uptime = Gtk.Label(label=self.bishoujo.uptime_houkoku())
         value_uptime.add_css_class('neofetch_value') 
         value_uptime.set_xalign(0.0)
         value_uptime.set_selectable(True)
@@ -239,7 +223,7 @@ class Mado(Gtk.ApplicationWindow):
         key_packages.set_xalign(1.0)
         neofetch_grid.attach(key_packages, 0, 4, 1, 1)
 
-        value_packages = Gtk.Label(label="... function not implemented")
+        value_packages = Gtk.Label(label=self.bishoujo.package_houkoku())
         value_packages.add_css_class('neofetch_value') 
         value_packages.set_xalign(0.0)
         value_packages.set_selectable(True)
@@ -526,6 +510,15 @@ class Mado(Gtk.ApplicationWindow):
     # Remove the old play_audio, _play_audio_threaded, _on_audio_finished_main_thread, _on_audio_error_main_thread
     # as their logic is now incorporated into the new structure.
 
+    def get_pkg_count(self, command):
+        try:
+            # Example for dpkg: command = "dpkg-query -f . -W | wc -l"
+            # For snap: command = "snap list | tail -n +2 | wc -l"
+            # Need to be careful with shell=True or splitting commands
+            process = subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
+            return process.stdout.strip()
+        except Exception:
+            return "N/A"
 
 # ~~~　窓の作成　~~~
 # -----------------------------------------
