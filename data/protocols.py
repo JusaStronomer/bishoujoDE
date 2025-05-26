@@ -38,7 +38,6 @@ from dotenv import load_dotenv
 load_dotenv()
 DIRECT_IP = os.getenv("DIRECT_IP")
 
-
 class ProtocolData:
     def __init__(self) -> None:
         self.protocols = {
@@ -48,15 +47,15 @@ class ProtocolData:
                         {"type": "play_audio", "serifu_key": "protocol_anima"},
                         {"type": "update_label", "serifu_key": "vpn"},
                         {"type": "play_audio", "serifu_key": "vpn"},
-                        {"type": "subprocess", "command": ["nordvpn", "connect", DIRECT_IP]},
+                        #{"type": "subprocess", "command": ["nordvpn", "connect", DIRECT_IP]},
+                        {"type": "subprocess", "command": "nordvpn connect " + str(DIRECT_IP)},
                         {"type": "update_label", "serifu_key": "danimestore"},
                         {"type": "play_audio", "serifu_key": "danimestore"},
                         {
                             "type": "subprocess",
-                            "command": ["google-chrome", "https://animestore.docomo.ne.jp"],
+                            #"command": ["google-chrome", "https://animestore.docomo.ne.jp"],
+                            "command": "google-chrome https://animestore.docomo.ne.jp",
                         },
-                        {"type": "update_label", "serifu_key": "process_finished"},
-                        {"type": "play_audio", "serifu_key": "process_finished"},
                 ],
 
                 "ダラダラ": [
@@ -74,8 +73,6 @@ class ProtocolData:
                             "type": "subprocess",
                             "command": ["google-chrome", "https://youtube.com"],
                         },
-                        {"type": "update_label", "serifu_key": "process_finished"},
-                        {"type": "play_audio", "serifu_key": "process_finished"},
                 ],
 
                 "プログラミング": [
@@ -93,12 +90,11 @@ class ProtocolData:
                         {"type": "update_label", "serifu_key": "spotify"},
                         {"type": "play_audio", "serifu_key": "spotify"},
                         {"type": "subprocess", "command": "spotify"},
-                        {"type": "update_label", "serifu_key": "process_finished"},
-                        {"type": "play_audio", "serifu_key": "process_finished"},
                 ],
                 "エトロ": [
                         {"type": "update_label", "serifu_key": "protocol_etro"},
                         {"type": "play_audio", "serifu_key": "protocol_etro"},
+                        {"type": "subprocess", "command": "ls"},
 
                 ],
         }

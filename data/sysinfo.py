@@ -32,5 +32,11 @@ def get_package_count_dpkg():
         return "N/A"
 
 def get_memory_info():
-        # to be implemented
-        pass
+    try:
+        mem = psutil.virtual_memory()
+        used_mb = mem.used // (1024 * 1024)
+        total_mb = mem.total // (1024 * 1024)
+        return f"{used_mb}Mib / {total_mb}Mib ({mem.percent}%)"
+    except Exception as e:
+        print (f"Error fetching memory info: {e}")
+        return "測定不能"

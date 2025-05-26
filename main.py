@@ -60,6 +60,9 @@ class Bishoujo:
     def package_houkoku(self):
         return data.sysinfo.get_package_count_dpkg()
 
+    def memory_houkoku(self):
+        return data.sysinfo.get_memory_info()
+
 # ~~~　美少女の窓　~~~
 # Creating Window Class, to replace a generic Gtk.ApplicationWindow
 # Window is not a cool word, so we are using "mado".
@@ -162,6 +165,7 @@ class Mado(Gtk.ApplicationWindow):
         self.entry.set_width_chars(30)
         self.entry.set_opacity(0.9)
         self.right_column.append(self.entry)
+        self.entry.grab_focus()
 
         # ----------------------
         # --- LEFT COLUMN -----
@@ -344,7 +348,7 @@ class Mado(Gtk.ApplicationWindow):
         key_Memory.set_xalign(1.0)
         neofetch_grid.attach(key_Memory, 0, 15, 1, 1)
 
-        value_Memory = Gtk.Label(label="... function not yet implemented")
+        value_Memory = Gtk.Label(label=self.bishoujo.memory_houkoku())
         value_Memory.add_css_class('neofetch_value') 
         value_Memory.set_xalign(0.0)
         value_Memory.set_selectable(True)
@@ -355,7 +359,6 @@ class Mado(Gtk.ApplicationWindow):
             orientation=Gtk.Orientation.VERTICAL, spacing=12
         )
         self.terminal_container.set_vexpand(True)
-        # self.terminal_container.set_size_request(1000, 775)
         scrolledwindow = Gtk.ScrolledWindow()
         scrolledwindow.set_has_frame(True)
         scrolledwindow.set_min_content_height(710)
@@ -367,9 +370,9 @@ class Mado(Gtk.ApplicationWindow):
         self.terminal_view.add_css_class('terminal_textview')
         self.textbuffer = self.terminal_view.get_buffer()
         self.textbuffer.set_text(
-            "[From terminal_view] Attempting to confirm own existence.\n"
-            + "[From terminal_view] Unable to obtain confirmation.\n"
-            + "[From terminal_view] Defaulting to assume cogito ergo sum."
+            "[Mado] Attempting to confirm own existence.\n"
+            + "[Mado] Unable to obtain confirmation.\n"
+            + "[Mado] Defaulting to assume cogito ergo sum.\n"
         )
         scrolledwindow.set_child(self.terminal_view)
 
@@ -393,6 +396,16 @@ class Mado(Gtk.ApplicationWindow):
 
         if text:  # Only update if text is not empty
             self.reply.set_text(text)
+        return GLib.SOURCE_REMOVE
+
+    # --- Helper method to update the Text Buffer of the TerminalView ---
+    def _update_terminalview_on_main_thread(self, text_to_add: str):
+        if self.textbuffer:
+            end_iter = self.textbuffer.get_end_iter()
+            self.textbuffer.insert(end_iter, text_to_add + "\n")
+            insert_mark = self.textbuffer.get_insert()
+            self.terminal_view.scroll_to_mark(insert_mark, 0.0, True, 0.0, 1.0)
+            # Parameters for scroll_to_mark: mark, within_margin, use_align, xalign, yalign (1.0 means align to bottom)
         return GLib.SOURCE_REMOVE
 
     # --- Synchronous audio playback method (to be called from worker thread) ---
@@ -440,10 +453,12 @@ class Mado(Gtk.ApplicationWindow):
         sequence = self.protocol_manager.get_protocol(command)
 
         if not sequence:
-            GLib.idle_add(
-                self._update_reply_label_on_main_thread, "unknown_command", True
-            )  # Use key from dai_hon
-            self._play_audio_sync_in_worker("unknown_command_audio")  # Use audio key
+            GLib.idle_add(self._update_reply_label_on_main_thread, "welcome", True)
+            self._play_audio_sync_in_worker("welcome")
+             #GLib.idle_add(
+                 #self._update_reply_label_on_main_thread, "unknown_command", True
+             #)  # Use key from dai_hon
+             #self._play_audio_sync_in_worker("unknown_command_audio")  # Use audio key
             return
 
         for action_item in sequence:
@@ -460,33 +475,65 @@ class Mado(Gtk.ApplicationWindow):
             elif action_type == "play_audio":
                 if serifu_key:
                     self._play_audio_sync_in_worker(serifu_key)
-            # elif action_type == "subprocess":
-            #     cmd_to_run = action_item["command"]
-            #     # Optionally update label before running
-            #     # GLib.idle_add(self._update_reply_label_on_main_thread, f"Running: {cmd_to_run[0]}...", False)
-            #     try:
-            #         print(f"[Worker] Running subprocess: {cmd_to_run}")
-            #         # subprocess.run(cmd_to_run, check=True)
-            #         print(f"[Worker] Subprocess finished: {cmd_to_run}")
-            #     except FileNotFoundError:
-            #         error_msg = f"Command not found: {cmd_to_run[0]}"
-            #         print(f"[Worker] {error_msg}")
-            #         GLib.idle_add(self._update_reply_label_on_main_thread, error_msg, False)
-            #         break # Stop sequence on this kind of error
-            #     except subprocess.CalledProcessError as e:
-            #         error_msg = f"Error running {cmd_to_run[0]}: {e}"
-            #         print(f"[Worker] {error_msg}")
-            #         GLib.idle_add(self._update_reply_label_on_main_thread, error_msg, False)
-            #         break # Stop sequence on error
-            #     except Exception as e: # Catch other potential errors
-            #         error_msg = f"Unexpected error with {cmd_to_run[0]}: {e}"
-            #         print(f"[Worker] {error_msg}")
-            #         GLib.idle_add(self._update_reply_label_on_main_thread, error_msg, False)
-            #         break
+            elif action_type == "subprocess":
+                cmd_to_run = action_item["command"]
 
+                # Announce what's being run
+                announce_run_msg = f"[Worker] Running: {cmd_to_run}"
+                print(announce_run_msg)
+                GLib.idle_add(self._update_terminalview_on_main_thread, announce_run_msg)
+
+                try:
+                    # Using shell=True can be a security risk if cmd_to_run is from untrusted input.
+                    # If cmd_to_run is always a string from your trusted config, it's what you had.
+                    completed_process = subprocess.run(
+                        cmd_to_run, 
+                        shell=True, 
+                        capture_output=True, 
+                        text=True, 
+                        check=True # Raises CalledProcessError if return code is non-zero
+                    )
+
+                    output_str = ""
+                    if completed_process.stdout:
+                        output_str += f"STDOUT:\n{completed_process.stdout.strip()}\n"
+                    if completed_process.stderr: # Often, successful commands might print to stderr too (e.g. warnings)
+                        output_str += f"STDERR:\n{completed_process.stderr.strip()}\n"
+
+                    if not output_str: # If both stdout and stderr are empty
+                        output_str = "[Worker] Subprocess finished with no output.\n"
+
+                    GLib.idle_add(self._update_terminalview_on_main_thread, output_str.strip())
+                    print(f"[Worker] Subprocess finished: {cmd_to_run}")
+
+                except FileNotFoundError:
+                    # cmd_to_run is a string here due to shell=True, so cmd_to_run[0] would error.
+                    # We can show part of the command string.
+                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                    error_msg = f"Command not found: {cmd_name_for_error}"
+                    print(f"[Worker] {error_msg}")
+                    GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                    break 
+                except subprocess.CalledProcessError as e:
+                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                    error_msg = f"Error running {cmd_name_for_error}:\n"
+                    error_msg += f"Return code: {e.returncode}\n"
+                    if e.stdout:
+                        error_msg += f"STDOUT:\n{e.stdout.strip()}\n"
+                    if e.stderr:
+                        error_msg += f"STDERR:\n{e.stderr.strip()}\n"
+                    print(f"[Worker] {error_msg.strip()}")
+                    GLib.idle_add(self._update_terminalview_on_main_thread, error_msg.strip())
+                    break
+                except Exception as e:
+                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                    error_msg = f"Unexpected error with {cmd_name_for_error}: {e}"
+                    print(f"[Worker] {error_msg}")
+                    GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                    break 
         # Final "done" message (could also be the last item in the sequence)
-        # GLib.idle_add(self._update_reply_label_on_main_thread, "process_finished", True)
-        # self._play_audio_sync_in_worker("process_finished")
+        GLib.idle_add(self._update_reply_label_on_main_thread, "process_finished", True)
+        self._play_audio_sync_in_worker("process_finished")
         print(f"[Worker] Finished processing command: {command}")
 
     # --- Renamed send_command to on_entry_activate for clarity ---
