@@ -6,3 +6,5 @@ bkup/*
 images/*
 voicevox/*
 tests/*
+bishoujode_app.log
+bishoujode_service.log
