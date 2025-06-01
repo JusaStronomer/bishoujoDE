@@ -414,9 +414,8 @@ class Mado(Gtk.ApplicationWindow):
         if not os.path.exists(audio_file):
             print(f"[Worker] Audio file not found: {audio_file} for key '{serifu_key}'")
             GLib.idle_add(
-                self._update_reply_label_on_main_thread,
-                f"Audio for '{serifu_key}' missing!",
-                False,
+                self._update_terminalview_on_main_thread,
+                f"Audio for '{serifu_key}' missing!"
             )
             return
 
@@ -427,9 +426,8 @@ class Mado(Gtk.ApplicationWindow):
         except Exception as e:
             print(f"[Worker] Error playing audio {audio_file}: {e}")
             GLib.idle_add(
-                self._update_reply_label_on_main_thread,
-                f"Audio error for '{serifu_key}': {e}",
-                False,
+                self._update_terminalview_on_main_thread,
+                f"Audio error for '{serifu_key}': {e}"
             )
 
     # --- Launching a sound thread for audio playback at the very start of the application ---
@@ -448,24 +446,23 @@ class Mado(Gtk.ApplicationWindow):
     def _process_command_sequence_thread(self, command: str):
         # Initial "checking" message
         GLib.idle_add(self._update_reply_label_on_main_thread, "checking", True)
-        # self._play_audio_sync_in_worker("checking") # Optional: if you have a "checking" audio
+        self._play_audio_sync_in_worker("checking")
 
         sequence = self.protocol_manager.get_protocol(command)
 
+        if command == "エトロ":
+            GLib.idle_add(self._update_reply_label_on_main_thread, "protocol_etro", True)
+            self._play_audio_sync_in_worker("protocol_etro")
+            self.destroy()
+
         if not sequence:
-            GLib.idle_add(self._update_reply_label_on_main_thread, "welcome", True)
-            self._play_audio_sync_in_worker("welcome")
-             #GLib.idle_add(
-                 #self._update_reply_label_on_main_thread, "unknown_command", True
-             #)  # Use key from dai_hon
-             #self._play_audio_sync_in_worker("unknown_command_audio")  # Use audio key
+            GLib.idle_add(self._update_reply_label_on_main_thread, "unknown_command", True)
+            self._play_audio_sync_in_worker("unknown_command")
             return
 
         for action_item in sequence:
             action_type = action_item["type"]
-            serifu_key = action_item.get(
-                "serifu_key"
-            )  # Might not exist for subprocess only
+            serifu_key = action_item.get("serifu_key")
 
             if action_type == "update_label":
                 if serifu_key:
@@ -477,60 +474,111 @@ class Mado(Gtk.ApplicationWindow):
                     self._play_audio_sync_in_worker(serifu_key)
             elif action_type == "subprocess":
                 cmd_to_run = action_item["command"]
+                mode = action_item.get("mode")
+
+                if not cmd_to_run:
+                    log_msg = "[Worker] Subprocess action item is missing 'command'. Skipping."
+                    print(log_msg)
+                    GLib.idle_add(self._update_terminalview_on_main_thread, log_msg)
+                    GLib.idle_add(self._update_reply_label_on_main_thread, "error", True)
+                    self._play_audio_sync_in_worker("error")
+                    continue
 
                 # Announce what's being run
                 announce_run_msg = f"[Worker] Running: {cmd_to_run}"
                 print(announce_run_msg)
                 GLib.idle_add(self._update_terminalview_on_main_thread, announce_run_msg)
 
-                try:
-                    # Using shell=True can be a security risk if cmd_to_run is from untrusted input.
-                    # If cmd_to_run is always a string from your trusted config, it's what you had.
-                    completed_process = subprocess.run(
-                        cmd_to_run, 
-                        shell=True, 
-                        capture_output=True, 
-                        text=True, 
-                        check=True # Raises CalledProcessError if return code is non-zero
-                    )
+                if mode == "run":
+                    try:
+                        # Using shell=True can be a security risk if cmd_to_run is from untrusted input.
+                        # If cmd_to_run is always a string from your trusted config, it's what you had.
+                        completed_process = subprocess.run(
+                            cmd_to_run, 
+                            shell=True, 
+                            capture_output=True, 
+                            text=True, 
+                            check=True # Raises CalledProcessError if return code is non-zero
+                        )
 
-                    output_str = ""
-                    if completed_process.stdout:
-                        output_str += f"STDOUT:\n{completed_process.stdout.strip()}\n"
-                    if completed_process.stderr: # Often, successful commands might print to stderr too (e.g. warnings)
-                        output_str += f"STDERR:\n{completed_process.stderr.strip()}\n"
+                        output_str = ""
+                        if completed_process.stdout:
+                            output_str += f"STDOUT:\n{completed_process.stdout.strip()}\n"
+                        if completed_process.stderr: # Often, successful commands might print to stderr too (e.g. warnings)
+                            output_str += f"STDERR:\n{completed_process.stderr.strip()}\n"
 
-                    if not output_str: # If both stdout and stderr are empty
-                        output_str = "[Worker] Subprocess finished with no output.\n"
+                        if not output_str: # If both stdout and stderr are empty
+                            output_str = "[Worker] Subprocess finished with no output.\n"
 
-                    GLib.idle_add(self._update_terminalview_on_main_thread, output_str.strip())
-                    print(f"[Worker] Subprocess finished: {cmd_to_run}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, output_str.strip())
+                        print(f"[Worker] Subprocess finished: {cmd_to_run}")
 
-                except FileNotFoundError:
-                    # cmd_to_run is a string here due to shell=True, so cmd_to_run[0] would error.
-                    # We can show part of the command string.
-                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                    error_msg = f"Command not found: {cmd_name_for_error}"
-                    print(f"[Worker] {error_msg}")
+                    except FileNotFoundError:
+                        # cmd_to_run is a string here due to shell=True, so cmd_to_run[0] would error.
+                        # We can show part of the command string.
+                        cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                        error_msg = f"Command not found: {cmd_name_for_error}"
+                        print(f"[Worker] {error_msg}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                        break 
+                    except subprocess.CalledProcessError as e:
+                        cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                        error_msg = f"Error running {cmd_name_for_error}:\n"
+                        error_msg += f"Return code: {e.returncode}\n"
+                        if e.stdout:
+                            error_msg += f"STDOUT:\n{e.stdout.strip()}\n"
+                        if e.stderr:
+                            error_msg += f"STDERR:\n{e.stderr.strip()}\n"
+                        print(f"[Worker] {error_msg.strip()}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, error_msg.strip())
+                        break
+                    except Exception as e:
+                        cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                        error_msg = f"Unexpected error with {cmd_name_for_error}: {e}"
+                        print(f"[Worker] {error_msg}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                        break
+
+                elif mode == "popen":
+                    try:
+                        # For Popen, cmd_to_run should ideally be a list if shell=False.
+                        # If cmd_to_run is a string like "google-chrome <url>", shell=True is needed.
+                        # If cmd_to_run is "discord", Popen(["discord"]) is better than Popen("discord", shell=True)
+                        # For simplicity and consistency with your 'run' example, I'll keep shell=True
+                        # but be aware that for simple commands, providing a list of args to Popen is safer without shell=True.
+                        
+                        print(f"[Worker] Launching with Popen (fire & forget): {cmd_to_run}")
+                        process = subprocess.Popen(cmd_to_run, shell=True,
+                                                   stdin=subprocess.DEVNULL, # Good practice for detached GUI apps
+                                                   stdout=subprocess.DEVNULL, # Don't capture for fire-and-forget
+                                                   stderr=subprocess.DEVNULL)
+                        
+                        launch_msg = f"[App] Launched: {cmd_to_run} (PID: {process.pid})"
+                        GLib.idle_add(self._update_terminalview_on_main_thread, launch_msg)
+                        print(f"[Worker] Popen launched and detached: {cmd_to_run}")
+
+                    except FileNotFoundError:
+                        cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                        error_msg = f"Command not found for Popen: {cmd_name_for_error}"
+                        print(f"[Worker] {error_msg}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                        break
+
+                    except Exception as e:
+                        cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
+                        error_msg = f"Unexpected error with Popen for {cmd_name_for_error}: {e}"
+                        print(f"[Worker] {error_msg}")
+                        GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
+                        break
+
+                else:
+                    error_msg = f"[Worker] Invalid or missing 'mod' for subprocess: {cmd_to_run}"
+                    print(error_msg)
                     GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
-                    break 
-                except subprocess.CalledProcessError as e:
-                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                    error_msg = f"Error running {cmd_name_for_error}:\n"
-                    error_msg += f"Return code: {e.returncode}\n"
-                    if e.stdout:
-                        error_msg += f"STDOUT:\n{e.stdout.strip()}\n"
-                    if e.stderr:
-                        error_msg += f"STDERR:\n{e.stderr.strip()}\n"
-                    print(f"[Worker] {error_msg.strip()}")
-                    GLib.idle_add(self._update_terminalview_on_main_thread, error_msg.strip())
+                    GLib.idle_add(self._update_reply_label_on_main_thread, "error", True)
+                    self._play_audio_sync_in_worker("error")
                     break
-                except Exception as e:
-                    cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                    error_msg = f"Unexpected error with {cmd_name_for_error}: {e}"
-                    print(f"[Worker] {error_msg}")
-                    GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
-                    break 
+
         # Final "done" message (could also be the last item in the sequence)
         GLib.idle_add(self._update_reply_label_on_main_thread, "process_finished", True)
         self._play_audio_sync_in_worker("process_finished")

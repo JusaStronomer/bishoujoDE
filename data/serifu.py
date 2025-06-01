@@ -17,7 +17,7 @@ class SerifuData:
 					"discord": "Discord開始",
 					"spotify": "Spotify開始",
 					"youtube": "YouTubeに接続",
-					"error" : "こく・エラーの発生確率上昇",
+					"error" : "告　エラー発生　タミナルの確認を推薦",
 					"llm" : "とい・不明コマンドをLLMで対応する機能は利用可能",
 					"negation" : "否",
 					"affirmation" : "是",
