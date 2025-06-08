@@ -360,7 +360,7 @@ class Mado(Gtk.ApplicationWindow):
         )
         self.terminal_container.set_vexpand(True)
         scrolledwindow = Gtk.ScrolledWindow()
-        scrolledwindow.add_css_class('terminal_scrolledwindow')
+        scrolledwindow.add_css_class('terminal_container')
         scrolledwindow.set_has_frame(False)
         scrolledwindow.set_min_content_height(710)
         self.terminal_container.append(scrolledwindow)
@@ -369,11 +369,8 @@ class Mado(Gtk.ApplicationWindow):
         self.terminal_view = Gtk.TextView()
         self.terminal_view.add_css_class('terminal_textview')
         self.textbuffer = self.terminal_view.get_buffer()
-        self.textbuffer.set_text(
-            "[Mado] Attempting to confirm own existence.\n"
-            + "[Mado] Unable to obtain confirmation.\n"
-            + "[Mado] Defaulting to assume cogito ergo sum.\n"
-        )
+        self.textbuffer.set_text("Initializing terminal emulation.\n")
+        init_pango_message = '<span foreground="#CF2740">[Mado]</span> Attempting to confirm own existence.\n' + '<span foreground="#CF2740">[Mado]</span> Unable to obtain confirmation.\n' + '<span foreground="#CF2740">[Mado]</span> Defaulting to assume cogito ergo sum.\n'
         scrolledwindow.set_child(self.terminal_view)
 
         # Initial greeting
@@ -383,6 +380,8 @@ class Mado(Gtk.ApplicationWindow):
         self.entry.connect("activate", self.on_entry_activate)
 
         print("[Mado] Window initialized with image, label, and entry.")
+
+        GLib.idle_add(self._update_terminalview_on_main_thread, init_pango_message)
 
     # --- Helper method to update GUI from any thread (schedules on main thread) ---
     def _update_reply_label_on_main_thread(
@@ -402,7 +401,7 @@ class Mado(Gtk.ApplicationWindow):
     def _update_terminalview_on_main_thread(self, text_to_add: str):
         if self.textbuffer:
             end_iter = self.textbuffer.get_end_iter()
-            self.textbuffer.insert(end_iter, text_to_add + "\n")
+            self.textbuffer.insert_markup(end_iter, text_to_add + "\n", -1)
             insert_mark = self.textbuffer.get_insert()
             self.terminal_view.scroll_to_mark(insert_mark, 0.0, True, 0.0, 1.0)
             # Parameters for scroll_to_mark: mark, within_margin, use_align, xalign, yalign (1.0 means align to bottom)
@@ -415,7 +414,7 @@ class Mado(Gtk.ApplicationWindow):
             print(f"[Worker] Audio file not found: {audio_file} for key '{serifu_key}'")
             GLib.idle_add(
                 self._update_terminalview_on_main_thread,
-                f"Audio for '{serifu_key}' missing!"
+                f'<span foreground="9D00FF">[Worker]</span> Audio for {serifu_key} missing!'
             )
             return
 
@@ -427,7 +426,7 @@ class Mado(Gtk.ApplicationWindow):
             print(f"[Worker] Error playing audio {audio_file}: {e}")
             GLib.idle_add(
                 self._update_terminalview_on_main_thread,
-                f"Audio error for '{serifu_key}': {e}"
+                f'<span foreground="9D00FF">[Worker]</span> Audio error for {serifu_key}: {e}'
             )
 
     # --- Launching a sound thread for audio playback at the very start of the application ---
@@ -477,7 +476,7 @@ class Mado(Gtk.ApplicationWindow):
                 mode = action_item.get("mode")
 
                 if not cmd_to_run:
-                    log_msg = "[Worker] Subprocess action item is missing 'command'. Skipping."
+                    log_msg = '<span foreground="9D00FF">[Worker]</span> Subprocess action item is missing COMMAND. Skipping.'
                     print(log_msg)
                     GLib.idle_add(self._update_terminalview_on_main_thread, log_msg)
                     GLib.idle_add(self._update_reply_label_on_main_thread, "error", True)
@@ -485,7 +484,7 @@ class Mado(Gtk.ApplicationWindow):
                     continue
 
                 # Announce what's being run
-                announce_run_msg = f"[Worker] Running: {cmd_to_run}"
+                announce_run_msg = f'<span foreground="9D00FF">[Worker]</span> Running: {cmd_to_run}'
                 print(announce_run_msg)
                 GLib.idle_add(self._update_terminalview_on_main_thread, announce_run_msg)
 
@@ -503,12 +502,12 @@ class Mado(Gtk.ApplicationWindow):
 
                         output_str = ""
                         if completed_process.stdout:
-                            output_str += f"STDOUT:\n{completed_process.stdout.strip()}\n"
+                            output_str += f'<span foreground="9D00FF">[STDOUT]</span>{completed_process.stdout.strip()}\n'
                         if completed_process.stderr: # Often, successful commands might print to stderr too (e.g. warnings)
-                            output_str += f"STDERR:\n{completed_process.stderr.strip()}\n"
+                            output_str += f'<span foreground="9D00FF">[STDERR]</span> {completed_process.stderr.strip()}\n'
 
                         if not output_str: # If both stdout and stderr are empty
-                            output_str = "[Worker] Subprocess finished with no output.\n"
+                            output_str = '<span foreground="9D00FF">[Worker]</span> Subprocess finished with no output.\n'
 
                         GLib.idle_add(self._update_terminalview_on_main_thread, output_str.strip())
                         print(f"[Worker] Subprocess finished: {cmd_to_run}")
@@ -517,25 +516,25 @@ class Mado(Gtk.ApplicationWindow):
                         # cmd_to_run is a string here due to shell=True, so cmd_to_run[0] would error.
                         # We can show part of the command string.
                         cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                        error_msg = f"Command not found: {cmd_name_for_error}"
+                        error_msg = f'<span foreground="9D00FF">[Worker]</span> Command not found: {cmd_name_for_error}'
                         print(f"[Worker] {error_msg}")
                         GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
                         break 
                     except subprocess.CalledProcessError as e:
                         cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                        error_msg = f"Error running {cmd_name_for_error}:\n"
-                        error_msg += f"Return code: {e.returncode}\n"
+                        error_msg = f'<span foreground="9D00FF">[Worker]</span> Error running {cmd_name_for_error}:\n'
+                        error_msg += f'<span foreground="9D00FF">[Worker]</span> Return code: {e.returncode}\n'
                         if e.stdout:
-                            error_msg += f"STDOUT:\n{e.stdout.strip()}\n"
+                            error_msg += f'<span foreground="9D00FF">[STDOUT]</span> {e.stdout.strip()}\n'
                         if e.stderr:
-                            error_msg += f"STDERR:\n{e.stderr.strip()}\n"
+                            error_msg += f'<span foreground="9D00FF">[STDERR]</span> {e.stderr.strip()}\n'
                         print(f"[Worker] {error_msg.strip()}")
                         GLib.idle_add(self._update_terminalview_on_main_thread, error_msg.strip())
                         break
                     except Exception as e:
                         cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                        error_msg = f"Unexpected error with {cmd_name_for_error}: {e}"
-                        print(f"[Worker] {error_msg}")
+                        error_msg = f'<span foreground="9D00FF">[Worker]</span> Unexpected error with {cmd_name_for_error}: {e}'
+                        print(f'[Worker] {error_msg}')
                         GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
                         break
 
@@ -553,26 +552,26 @@ class Mado(Gtk.ApplicationWindow):
                                                    stdout=subprocess.DEVNULL, # Don't capture for fire-and-forget
                                                    stderr=subprocess.DEVNULL)
                         
-                        launch_msg = f"[App] Launched: {cmd_to_run} (PID: {process.pid})"
+                        launch_msg = f'<span foreground="#0BDA51">[APP]</span> Launched: {cmd_to_run} (PID: {process.pid})'
                         GLib.idle_add(self._update_terminalview_on_main_thread, launch_msg)
                         print(f"[Worker] Popen launched and detached: {cmd_to_run}")
 
                     except FileNotFoundError:
                         cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                        error_msg = f"Command not found for Popen: {cmd_name_for_error}"
+                        error_msg = f'<span foreground="9D00FF">[Worker]</span> Command not found for Popen: {cmd_name_for_error}'
                         print(f"[Worker] {error_msg}")
                         GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
                         break
 
                     except Exception as e:
                         cmd_name_for_error = cmd_to_run.split()[0] if cmd_to_run else cmd_to_run
-                        error_msg = f"Unexpected error with Popen for {cmd_name_for_error}: {e}"
+                        error_msg = f'<span foreground="9D00FF">[Worker]</span> Unexpected error with Popen for {cmd_name_for_error}: {e}'
                         print(f"[Worker] {error_msg}")
                         GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
                         break
 
                 else:
-                    error_msg = f"[Worker] Invalid or missing 'mod' for subprocess: {cmd_to_run}"
+                    error_msg = f' Invalid or missing MOD for subprocess: {cmd_to_run}'
                     print(error_msg)
                     GLib.idle_add(self._update_terminalview_on_main_thread, error_msg)
                     GLib.idle_add(self._update_reply_label_on_main_thread, "error", True)
