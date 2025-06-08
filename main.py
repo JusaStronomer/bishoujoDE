@@ -360,9 +360,9 @@ class Mado(Gtk.ApplicationWindow):
         )
         self.terminal_container.set_vexpand(True)
         scrolledwindow = Gtk.ScrolledWindow()
-        scrolledwindow.set_has_frame(True)
+        scrolledwindow.add_css_class('terminal_scrolledwindow')
+        scrolledwindow.set_has_frame(False)
         scrolledwindow.set_min_content_height(710)
-        scrolledwindow.set_opacity(0.9)
         self.terminal_container.append(scrolledwindow)
         self.left_column.append(self.terminal_container)
 
